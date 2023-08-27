@@ -1,16 +1,16 @@
 import concurrent.futures
 import contextlib
-import http.client
 import json
 import math
 import struct
 import time
-import urllib.error
 
 from .common import FileDownloader
 from .http import HttpFD
 from ..aes import aes_cbc_decrypt_bytes, unpad_pkcs7
 from ..compat import compat_os_name
+from ..networking import Request
+from ..networking.exceptions import HTTPError, IncompleteRead
 from ..utils import (
     DownloadError,
     UnrecoverableHttpError,
@@ -19,6 +19,7 @@ from ..utils import (
     sanitized_Request,
     traverse_obj,
 )
+from ..utils.networking import HTTPHeaderDict
 
 
 class HttpQuietDownloader(HttpFD):
@@ -75,7 +76,7 @@ class FragmentFD(FileDownloader):
 
     def _prepare_url(self, info_dict, url):
         headers = info_dict.get('http_headers')
-        return sanitized_Request(url, None, headers) if headers else url
+        return Request(url, None, headers) if headers else url
 
     def _prepare_and_start_frag_download(self, ctx, info_dict):
         self._prepare_frag_download(ctx)
@@ -173,6 +174,9 @@ class FragmentFD(FileDownloader):
             **self.params,
             'noprogress': True,
             'test': False,
+            'sleep_interval': 0,
+            'max_sleep_interval': 0,
+            'sleep_interval_subtitles': 0,
             'throttledratelimit': 0,
         })
         tmpfilename = self.temp_name(ctx['filename'])
@@ -459,7 +463,7 @@ class FragmentFD(FileDownloader):
 
             frag_index = ctx['fragment_index'] = fragment['frag_index']
             ctx['last_error'] = None
-            headers = info_dict.get('http_headers', {}).copy()
+            headers = HTTPHeaderDict(info_dict.get('http_headers'))
             byte_range = fragment.get('byte_range')
             if byte_range:
                 headers['Range'] = 'bytes=%d-%d' % (byte_range['start'], byte_range['end'] - 1)
@@ -479,8 +483,8 @@ class FragmentFD(FileDownloader):
                     if not self._download_fragment(
                             ctx, fragment['url'], info_dict, headers, info_dict.get('request_data')):
                         return
-                except (urllib.error.HTTPError, http.client.IncompleteRead) as err:
-                    if isinstance(err, urllib.error.HTTPError) and err.code in bad_status_code:
+                except (HTTPError, IncompleteRead) as err:
+                    if isinstance(err, HTTPError) and err.code in bad_status_code:
                         retry.error = UnrecoverableHttpError()
                         continue
                     retry.error = err

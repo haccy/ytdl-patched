@@ -13,6 +13,7 @@ import netrc
 import os
 import random
 import re
+import subprocess
 import sys
 import time
 import types
@@ -25,10 +26,22 @@ if TYPE_CHECKING:
     from ..YoutubeDL import YoutubeDL
 
 from ..compat import functools  # isort: split
-from ..compat import compat_etree_fromstring, compat_expanduser, compat_os_name
+from ..compat import (
+    compat_etree_fromstring,
+    compat_expanduser,
+    compat_os_name,
+    urllib_req_to_req,
+)
 from ..dependencies import WebSocket
 from ..cookies import LenientSimpleCookie
 from ..downloader.f4m import get_base_url, remove_encrypted_media
+from ..downloader.hls import HlsFD
+from ..networking import HEADRequest, Request
+from ..networking.exceptions import (
+    HTTPError,
+    IncompleteRead,
+    network_exceptions,
+)
 from ..utils import (
     IDENTITY,
     JSON_LD_RE,
@@ -37,8 +50,8 @@ from ..utils import (
     FormatSorter,
     GeoRestrictedError,
     GeoUtils,
-    HEADRequest,
     LenientJSONDecoder,
+    Popen,
     RegexNotFoundError,
     RetryManager,
     UnsupportedError,
@@ -63,7 +76,7 @@ from ..utils import (
     js_to_json,
     merge_dicts,
     mimetype2ext,
-    network_exceptions,
+    netrc_from_content,
     orderedSet,
     parse_bitrate,
     parse_codecs,
@@ -74,7 +87,6 @@ from ..utils import (
     request_to_url,
     sanitize_filename,
     sanitize_url,
-    sanitized_Request,
     smuggle_url,
     str_or_none,
     str_to_int,
@@ -86,8 +98,6 @@ from ..utils import (
     unescapeHTML,
     unified_strdate,
     unified_timestamp,
-    update_Request,
-    update_url_query,
     url_basename,
     url_or_none,
     urlencode_postdata,
@@ -232,7 +242,8 @@ class InfoExtractor:
                                  width : height ratio as float.
                     * no_resume  The server does not support resuming the
                                  (HTTP or RTMP) download. Boolean.
-                    * has_drm    The format has DRM and cannot be downloaded. Boolean
+                    * has_drm    True if the format has DRM and cannot be downloaded.
+                                 'maybe' if the format may have DRM and has to be tested before download.
                     * extra_param_to_segment_url  A query string to append to each
                                  fragment's URL, or to update each existing query string
                                  with. Only applied by the native HLS/DASH downloaders.
@@ -483,8 +494,8 @@ class InfoExtractor:
 
 
     Subclasses of this should also be added to the list of extractors and
-    should define a _VALID_URL regexp and, re-define the _real_extract() and
-    (optionally) _real_initialize() methods.
+    should define _VALID_URL as a regexp or a Sequence of regexps, and
+    re-define the _real_extract() and (optionally) _real_initialize() methods.
 
     Subclasses may also override suitable() if necessary, but ensure the function
     signature is preserved and that this function imports everything it needs
@@ -557,7 +568,7 @@ class InfoExtractor:
     """
 
     def _login_hint(self, method=NO_DEFAULT, netrc=None):
-        password_hint = f'--username and --password, or --netrc ({netrc or self._NETRC_MACHINE}) to provide account credentials'
+        password_hint = f'--username and --password, --netrc-cmd, or --netrc ({netrc or self._NETRC_MACHINE}) to provide account credentials'
         return {
             None: '',
             'any': f'Use --cookies, --cookies-from-browser, {password_hint}',
@@ -584,8 +595,8 @@ class InfoExtractor:
         # we have cached the regexp for *this* class, whereas getattr would also
         # match the superclass
         if '_VALID_URL_RE' not in cls.__dict__:
-            cls._VALID_URL_RE = re.compile(cls._VALID_URL)
-        return cls._VALID_URL_RE.match(url)
+            cls._VALID_URL_RE = tuple(map(re.compile, variadic(cls._VALID_URL)))
+        return next(filter(None, (regex.match(url) for regex in cls._VALID_URL_RE)), None)
 
     @classmethod
     def suitable(cls, url):
@@ -748,11 +759,11 @@ class InfoExtractor:
         except UnsupportedError:
             raise
         except ExtractorError as e:
-            e.video_id = e.video_id or self.get_temp_id(url),
+            e.video_id = e.video_id or self.get_temp_id(url)
             e.ie = e.ie or self.IE_NAME,
             e.traceback = e.traceback or sys.exc_info()[2]
             raise
-        except http.client.IncompleteRead as e:
+        except IncompleteRead as e:
             raise ExtractorError('A network error has occurred.', cause=e, expected=True, video_id=self.get_temp_id(url))
         except (KeyError, StopIteration) as e:
             raise ExtractorError('An extractor error has occurred.', cause=e, video_id=self.get_temp_id(url))
@@ -811,20 +822,25 @@ class InfoExtractor:
 
     @staticmethod
     def __can_accept_status_code(err, expected_status):
-        assert isinstance(err, urllib.error.HTTPError)
+        assert isinstance(err, HTTPError)
         if expected_status is None:
             return False
         elif callable(expected_status):
-            return expected_status(err.code) is True
+            return expected_status(err.status) is True
         else:
-            return err.code in variadic(expected_status)
+            return err.status in variadic(expected_status)
 
     def _create_request(self, url_or_request, data=None, headers=None, query=None):
         if isinstance(url_or_request, urllib.request.Request):
-            return update_Request(url_or_request, data=data, headers=headers, query=query)
-        if query:
-            url_or_request = update_url_query(url_or_request, query)
-        return sanitized_Request(url_or_request, data, headers or {})
+            self._downloader.deprecation_warning(
+                'Passing a urllib.request.Request to _create_request() is deprecated. '
+                'Use yt_dlp.networking.common.Request instead.')
+            url_or_request = urllib_req_to_req(url_or_request)
+        elif not isinstance(url_or_request, Request):
+            url_or_request = Request(url_or_request)
+
+        url_or_request.update(data=data, headers=headers, query=query)
+        return url_or_request
 
     def _request_webpage(self, url_or_request, video_id, note=None, errnote=None, fatal=True, data=None, headers=None, query=None, expected_status=None):
         """
@@ -864,14 +880,9 @@ class InfoExtractor:
                 self.to_screen('[debug] Fetching webpage from %s' % request_to_url(_req))
             return self._downloader.urlopen(_req)
         except network_exceptions as err:
-            if isinstance(err, urllib.error.HTTPError):
+            if isinstance(err, HTTPError):
                 if self.__can_accept_status_code(err, expected_status):
-                    # Retain reference to error to prevent file object from
-                    # being closed before it can be read. Works around the
-                    # effects of <https://bugs.python.org/issue15002>
-                    # introduced in Python 3.4.1.
-                    err.fp._error = err
-                    return err.fp
+                    return err.response
 
             if errnote is False:
                 return False
@@ -1083,7 +1094,7 @@ class InfoExtractor:
                              json_body=None, form_params=None, body_encoding=None):
             if self.get_param('load_pages'):
                 url_or_request = self._create_request(url_or_request, data, headers, query)
-                filename = self._request_dump_filename(url_or_request.full_url, video_id)
+                filename = self._request_dump_filename(url_or_request.url, video_id)
                 self.to_screen(f'Loading request from {filename}')
                 try:
                     with open(filename, 'rb') as dumpf:
@@ -1160,7 +1171,7 @@ class InfoExtractor:
         while True:
             try:
                 return self.__download_webpage(url_or_request, video_id, note, errnote, None, fatal, *args, **kwargs)
-            except http.client.IncompleteRead as e:
+            except IncompleteRead as e:
                 try_count += 1
                 if try_count >= tries:
                     raise e
@@ -1346,45 +1357,48 @@ class InfoExtractor:
         return clean_html(res)
 
     def _get_netrc_login_info(self, netrc_machine=None):
-        username = None
-        password = None
         netrc_machine = netrc_machine or self._NETRC_MACHINE
 
-        if self.get_param('usenetrc', False):
-            try:
-                netrc_file = compat_expanduser(self.get_param('netrc_location') or '~')
-                if os.path.isdir(netrc_file):
-                    netrc_file = os.path.join(netrc_file, '.netrc')
-                info = netrc.netrc(file=netrc_file).authenticators(netrc_machine)
-                if info is not None:
-                    username = info[0]
-                    password = info[2]
-                else:
-                    raise netrc.NetrcParseError(
-                        'No authenticators for %s' % netrc_machine)
-            except (OSError, netrc.NetrcParseError) as err:
-                self.report_warning(
-                    'parsing .netrc: %s' % error_to_compat_str(err))
+        cmd = self.get_param('netrc_cmd')
+        if cmd:
+            cmd = cmd.replace('{}', netrc_machine)
+            self.to_screen(f'Executing command: {cmd}')
+            stdout, _, ret = Popen.run(cmd, text=True, shell=True, stdout=subprocess.PIPE)
+            if ret != 0:
+                raise OSError(f'Command returned error code {ret}')
+            info = netrc_from_content(stdout).authenticators(netrc_machine)
 
-        return username, password
+        elif self.get_param('usenetrc', False):
+            netrc_file = compat_expanduser(self.get_param('netrc_location') or '~')
+            if os.path.isdir(netrc_file):
+                netrc_file = os.path.join(netrc_file, '.netrc')
+            info = netrc.netrc(netrc_file).authenticators(netrc_machine)
+
+        else:
+            return None, None
+        if not info:
+            raise netrc.NetrcParseError(f'No authenticators for {netrc_machine}')
+        return info[0], info[2]
 
     def _get_login_info(self, username_option='username', password_option='password', netrc_machine=None):
         """
         Get the login info as (username, password)
         First look for the manually specified credentials using username_option
         and password_option as keys in params dictionary. If no such credentials
-        available look in the netrc file using the netrc_machine or _NETRC_MACHINE
-        value.
+        are available try the netrc_cmd if it is defined or look in the
+        netrc file using the netrc_machine or _NETRC_MACHINE value.
         If there's no info available, return (None, None)
         """
 
-        # Attempt to use provided username and password or .netrc data
         username = self.get_param(username_option)
         if username is not None:
             password = self.get_param(password_option)
         else:
-            username, password = self._get_netrc_login_info(netrc_machine)
-
+            try:
+                username, password = self._get_netrc_login_info(netrc_machine)
+            except (OSError, netrc.NetrcParseError) as err:
+                self.report_warning(f'Failed to parse .netrc: {err}')
+                return None, None
         return username, password
 
     def _get_tfa_info(self, note='two-factor verification code'):
@@ -1856,7 +1870,7 @@ class InfoExtractor:
             return []
 
         manifest, urlh = res
-        manifest_url = urlh.geturl()
+        manifest_url = urlh.url
 
         return self._parse_f4m_formats(
             manifest, manifest_url, video_id, preference=preference, quality=quality, f4m_id=f4m_id,
@@ -2017,7 +2031,7 @@ class InfoExtractor:
             return [], {}
 
         m3u8_doc, urlh = res
-        m3u8_url = urlh.geturl()
+        m3u8_url = urlh.url
 
         return self._parse_m3u8_formats_and_subtitles(
             m3u8_doc, m3u8_url, ext=ext, entry_protocol=entry_protocol,
@@ -2030,17 +2044,9 @@ class InfoExtractor:
             preference=None, quality=None, m3u8_id=None, live=False, note=None,
             errnote=None, fatal=True, data=None, headers={}, query={},
             video_id=None):
-
-        if not m3u8_url:
-            b64data = base64.b64encode(m3u8_doc.encode('utf-8')).decode()
-            m3u8_url = f'data:application/mpegurl;base64,{b64data}'
-
         formats, subtitles = [], {}
 
-        has_drm = re.search('|'.join([
-            r'#EXT-X-FAXS-CM:',  # Adobe Flash Access
-            r'#EXT-X-(?:SESSION-)?KEY:.*?URI="skd://',  # Apple FairPlay
-        ]), m3u8_doc)
+        has_drm = HlsFD._has_drm(m3u8_doc)
 
         def format_url(url):
             return url if re.match(r'^https?://', url) else urllib.parse.urljoin(m3u8_url, url)
@@ -2302,18 +2308,10 @@ class InfoExtractor:
         if res is False:
             assert not fatal
             return [], {}
-
         smil, urlh = res
-        smil_url = urlh.geturl()
 
-        namespace = self._parse_smil_namespace(smil)
-
-        fmts = self._parse_smil_formats(
-            smil, smil_url, video_id, namespace=namespace, f4m_params=f4m_params)
-        subs = self._parse_smil_subtitles(
-            smil, namespace=namespace)
-
-        return fmts, subs
+        return self._parse_smil_formats_and_subtitles(smil, urlh.url, video_id, f4m_params=f4m_params,
+                                                      namespace=self._parse_smil_namespace(smil))
 
     def _extract_smil_formats(self, *args, **kwargs):
         fmts, subs = self._extract_smil_formats_and_subtitles(*args, **kwargs)
@@ -2327,7 +2325,7 @@ class InfoExtractor:
             return {}
 
         smil, urlh = res
-        smil_url = urlh.geturl()
+        smil_url = urlh.url
 
         return self._parse_smil(smil, smil_url, video_id, f4m_params=f4m_params)
 
@@ -2339,9 +2337,8 @@ class InfoExtractor:
     def _parse_smil(self, smil, smil_url, video_id, f4m_params=None):
         namespace = self._parse_smil_namespace(smil)
 
-        formats = self._parse_smil_formats(
+        formats, subtitles = self._parse_smil_formats_and_subtitles(
             smil, smil_url, video_id, namespace=namespace, f4m_params=f4m_params)
-        subtitles = self._parse_smil_subtitles(smil, namespace=namespace)
 
         video_id = os.path.splitext(url_basename(smil_url))[0]
         title = None
@@ -2380,7 +2377,14 @@ class InfoExtractor:
         return self._search_regex(
             r'(?i)^{([^}]+)?}smil$', smil.tag, 'namespace', default=None)
 
-    def _parse_smil_formats(self, smil, smil_url, video_id, namespace=None, f4m_params=None, transform_rtmp_url=None):
+    def _parse_smil_formats(self, *args, **kwargs):
+        fmts, subs = self._parse_smil_formats_and_subtitles(*args, **kwargs)
+        if subs:
+            self._report_ignoring_subs('SMIL')
+        return fmts
+
+    def _parse_smil_formats_and_subtitles(
+            self, smil, smil_url, video_id, namespace=None, f4m_params=None, transform_rtmp_url=None):
         base = smil_url
         for meta in smil.findall(self._xpath_ns('./head/meta', namespace)):
             b = meta.get('base') or meta.get('httpBase')
@@ -2388,7 +2392,7 @@ class InfoExtractor:
                 base = b
                 break
 
-        formats = []
+        formats, subtitles = [], {}
         rtmp_count = 0
         http_count = 0
         m3u8_count = 0
@@ -2436,8 +2440,9 @@ class InfoExtractor:
             src_url = src_url.strip()
 
             if proto == 'm3u8' or src_ext == 'm3u8':
-                m3u8_formats = self._extract_m3u8_formats(
+                m3u8_formats, m3u8_subs = self._extract_m3u8_formats_and_subtitles(
                     src_url, video_id, ext or 'mp4', m3u8_id='hls', fatal=False)
+                self._merge_subtitles(m3u8_subs, target=subtitles)
                 if len(m3u8_formats) == 1:
                     m3u8_count += 1
                     m3u8_formats[0].update({
@@ -2458,11 +2463,15 @@ class InfoExtractor:
                 f4m_url += urllib.parse.urlencode(f4m_params)
                 formats.extend(self._extract_f4m_formats(f4m_url, video_id, f4m_id='hds', fatal=False))
             elif src_ext == 'mpd':
-                formats.extend(self._extract_mpd_formats(
-                    src_url, video_id, mpd_id='dash', fatal=False))
+                mpd_formats, mpd_subs = self._extract_mpd_formats_and_subtitles(
+                    src_url, video_id, mpd_id='dash', fatal=False)
+                formats.extend(mpd_formats)
+                self._merge_subtitles(mpd_subs, target=subtitles)
             elif re.search(r'\.ism/[Mm]anifest', src_url):
-                formats.extend(self._extract_ism_formats(
-                    src_url, video_id, ism_id='mss', fatal=False))
+                ism_formats, ism_subs = self._extract_ism_formats_and_subtitles(
+                    src_url, video_id, ism_id='mss', fatal=False)
+                formats.extend(ism_formats)
+                self._merge_subtitles(ism_subs, target=subtitles)
             elif src_url.startswith('http') and self._is_valid_url(src, video_id):
                 http_count += 1
                 formats.append({
@@ -2493,7 +2502,10 @@ class InfoExtractor:
                 'format_note': 'SMIL storyboards',
             })
 
-        return formats
+        smil_subs = self._parse_smil_subtitles(smil, namespace=namespace)
+        self._merge_subtitles(smil_subs, target=subtitles)
+
+        return formats, subtitles
 
     def _parse_smil_subtitles(self, smil, namespace=None, subtitles_lang='en'):
         urls = []
@@ -2519,7 +2531,7 @@ class InfoExtractor:
             return []
 
         xspf, urlh = res
-        xspf_url = urlh.geturl()
+        xspf_url = urlh.url
 
         return self._parse_xspf(
             xspf, playlist_id, xspf_url=xspf_url,
@@ -2590,7 +2602,7 @@ class InfoExtractor:
             return [], {}
 
         # We could have been redirected to a new url when we retrieved our mpd file.
-        mpd_url = urlh.geturl()
+        mpd_url = urlh.url
         mpd_base_url = base_url(mpd_url)
 
         return self._parse_mpd_formats_and_subtitles(
@@ -2962,7 +2974,7 @@ class InfoExtractor:
         if ism_doc is None:
             return [], {}
 
-        return self._parse_ism_formats_and_subtitles(ism_doc, urlh.geturl(), ism_id)
+        return self._parse_ism_formats_and_subtitles(ism_doc, urlh.url, ism_id)
 
     def _parse_ism_formats_and_subtitles(self, ism_doc, ism_url, ism_id=None):
         """

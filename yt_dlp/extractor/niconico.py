@@ -14,6 +14,7 @@ from ..neonippori import (
     load_comments,
     convert_niconico_json_to_xml,
 )
+from ..networking.exceptions import HTTPError
 from ..utils import (
     ExtractorError,
     OnDemandPagedList,
@@ -414,7 +415,7 @@ class NiconicoIE(NiconicoBaseIE):
             webpage, handle = self._download_webpage_handle(
                 'https://www.nicovideo.jp/watch/' + video_id, video_id)
             if video_id.startswith('so'):
-                video_id = self._match_id(handle.geturl())
+                video_id = self._match_id(handle.url)
 
             api_data = self._parse_json(self._html_search_regex(
                 'data-api-data="([^"]+)"', webpage,
@@ -426,9 +427,9 @@ class NiconicoIE(NiconicoBaseIE):
                     note='Downloading API JSON', errnote='Unable to fetch data')['data']
                 webpage = None
             except ExtractorError:
-                if not isinstance(e.cause, compat_HTTPError):
+                if not isinstance(e.cause, HTTPError):
                     raise
-                webpage = e.cause.read().decode('utf-8', 'replace')
+                webpage = e.cause.response.read().decode('utf-8', 'replace')
                 error_msg = self._html_search_regex(
                     r'(?s)<section\s+class="(?:(?:ErrorMessage|WatchExceptionPage-message)\s*)+">(.+?)</section>',
                     webpage, 'error reason', default=None)
@@ -791,7 +792,7 @@ class NiconicoHistoryIE(NiconicoPlaylistBaseIE):
         try:
             mylist = self._call_api(list_id, 'list', {'pageSize': 1})
         except ExtractorError as e:
-            if isinstance(e.cause, compat_HTTPError) and e.cause.code == 401:
+            if isinstance(e.cause, HTTPError) and e.cause.status == 401:
                 self.raise_login_required('You have to be logged in to get your history')
             raise
         return self.playlist_result(self._entries(list_id), list_id, **self._parse_owner(mylist))
@@ -988,8 +989,8 @@ class NiconicoLiveIE(NiconicoBaseIE):
             'frontend_id': traverse_obj(embedded_data, ('site', 'frontendId')) or '9',
         })
 
-        hostname = remove_start(urlparse(urlh.geturl()).hostname, 'sp.')
-        cookies = try_get(urlh.geturl(), self._get_cookie_header)
+        hostname = remove_start(urlparse(urlh.url).hostname, 'sp.')
+        cookies = try_get(urlh.url, self._get_cookie_header)
         latency = try_get(self._configuration_arg('latency'), lambda x: x[0])
         if latency not in self._KNOWN_LATENCY:
             latency = 'high'

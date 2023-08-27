@@ -1,21 +1,20 @@
 import functools
 import json
 import os
-import urllib.error
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..YoutubeDL import YoutubeDL
 
 from ..longname import split_longname
+from ..networking import Request
+from ..networking.exceptions import HTTPError, network_exceptions
 from ..utils import (
     PostProcessingError,
     RetryManager,
     _configuration_args,
     deprecation_warning,
     encodeFilename,
-    network_exceptions,
-    sanitized_Request,
 )
 
 
@@ -204,7 +203,7 @@ class PostProcessor(metaclass=PostProcessorMetaClass):
         tmpl = progress_template.get('postprocess')
         if tmpl:
             self._downloader.to_screen(
-                self._downloader.evaluate_outtmpl(tmpl, progress_dict), skip_eol=True, quiet=False)
+                self._downloader.evaluate_outtmpl(tmpl, progress_dict), quiet=False)
 
         self._downloader.to_console_title(self._downloader.evaluate_outtmpl(
             progress_template.get('postprocess-title') or 'yt-dlp %(progress._default_template)s',
@@ -220,13 +219,13 @@ class PostProcessor(metaclass=PostProcessorMetaClass):
         self.write_debug(f'{self.PP_NAME} query: {url}')
         for retry in RetryManager(self.get_param('extractor_retries', 3), self._retry_download):
             try:
-                rsp = self._downloader.urlopen(sanitized_Request(url))
+                rsp = self._downloader.urlopen(Request(url))
             except network_exceptions as e:
-                if isinstance(e, urllib.error.HTTPError) and e.code in expected_http_errors:
+                if isinstance(e, HTTPError) and e.status in expected_http_errors:
                     return None
                 retry.error = PostProcessingError(f'Unable to communicate with {self.PP_NAME} API: {e}')
                 continue
-        return json.loads(rsp.read().decode(rsp.info().get_param('charset') or 'utf-8'))
+        return json.loads(rsp.read().decode(rsp.headers.get_param('charset') or 'utf-8'))
 
 
 class AudioConversionError(PostProcessingError):  # Deprecated

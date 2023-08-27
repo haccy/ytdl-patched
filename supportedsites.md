@@ -351,6 +351,7 @@
  - **DigitalConcertHall**: [*digitalconcerthall*](## "netrc machine") DigitalConcertHall extractor
  - **DigitallySpeaking**
  - **Digiteka**
+ - **DiscogsReleasePlaylist**
  - **Discovery**
  - **DiscoveryLife**
  - **DiscoveryNetworksDe**
@@ -425,6 +426,7 @@
  - **ESPNArticle**
  - **ESPNCricInfo**
  - **EsriVideo**
+ - **EttuTv**
  - **Europa**
  - **EuroParlWebstream**
  - **EuropeanTour**
@@ -485,6 +487,7 @@
  - **funimation:page**: [*funimation*](## "netrc machine")
  - **funimation:show**: [*funimation*](## "netrc machine")
  - **Funk**
+ - **Funker530**
  - **Fusion**
  - **Fux**
  - **FuyinTV**
@@ -517,6 +520,7 @@
  - **GlattvisionTVLive**: [*glattvisiontv*](## "netrc machine")
  - **GlattvisionTVRecordings**: [*glattvisiontv*](## "netrc machine")
  - **Glide**: Glide mobile video messages (glide.me)
+ - **GlobalCyclingNetworkPlus**
  - **GlobalPlayerAudio**
  - **GlobalPlayerAudioEpisode**
  - **GlobalPlayerLive**
@@ -825,6 +829,7 @@
  - **MonsterSirenHypergryphMusic**
  - **Morningstar**: morningstar.com
  - **Motherless**
+ - **MotherlessGallery**
  - **MotherlessGroup**
  - **Motorsport**: motorsport.com
  - **MotorTrend**
@@ -939,6 +944,7 @@
  - **NhkForSchoolSubject**: Portal page for each school subjects, like Japanese (kokugo, 国語) or math (sansuu/suugaku or 算数・数学)
  - **NhkRadioNewsPage**
  - **NhkRadiru**: NHK らじる (Radiru/Rajiru)
+ - **NhkRadiruLive**
  - **NhkVod**
  - **NhkVodProgram**
  - **nhl.com**
@@ -1148,6 +1154,7 @@
  - **puhutv:serie**
  - **Puls4**
  - **Pyvideo**
+ - **QDance**: [*qdance*](## "netrc machine")
  - **QingTing**
  - **qqmusic**: QQ音乐
  - **qqmusic:album**: QQ音乐 - 专辑
@@ -1212,6 +1219,7 @@
  - **Restudy**
  - **Reuters**
  - **ReverbNation**
+ - **RheinMainTV**
  - **RICE**
  - **RMCDecouverte**
  - **RockstarGames**
@@ -1374,6 +1382,8 @@
  - **sr:mediathek**: Saarländischer Rundfunk
  - **SRGSSR**
  - **SRGSSRPlay**: srf.ch, rts.ch, rsi.ch, rtr.ch and swissinfo.ch play sites
+ - **StacommuLive**: [*stacommu*](## "netrc machine")
+ - **StacommuVOD**: [*stacommu*](## "netrc machine")
  - **StagePlusVODConcert**: [*stageplus*](## "netrc machine")
  - **stanfordoc**: Stanford Open ClassRoom
  - **StarTrek**
@@ -1564,12 +1574,12 @@
  - **TwitchVideos**: [*twitch*](## "netrc machine")
  - **TwitchVideosClips**: [*twitch*](## "netrc machine")
  - **TwitchVideosCollections**: [*twitch*](## "netrc machine")
- - **twitter**
- - **twitter:amplify**
- - **twitter:broadcast**
+ - **twitter**: [*twitter*](## "netrc machine")
+ - **twitter:amplify**: [*twitter*](## "netrc machine")
+ - **twitter:broadcast**: [*twitter*](## "netrc machine")
  - **twitter:card**
- - **twitter:shortener**
- - **twitter:spaces**
+ - **twitter:shortener**: [*twitter*](## "netrc machine")
+ - **twitter:spaces**: [*twitter*](## "netrc machine")
  - **Txxx**
  - **udemy**: [*udemy*](## "netrc machine")
  - **udemy:course**: [*udemy*](## "netrc machine")
@@ -1662,6 +1672,8 @@
  - **vk**: [*vk*](## "netrc machine") VK
  - **vk:uservideos**: [*vk*](## "netrc machine") VK - User's Videos
  - **vk:wallpost**: [*vk*](## "netrc machine")
+ - **VKPlay**
+ - **VKPlayLive**
  - **vm.tiktok**
  - **Vocaroo**
  - **Vodlocker**
@@ -1671,8 +1683,8 @@
  - **voicy**
  - **voicy:channel**
  - **VolejTV**
- - **Voot**
- - **VootSeries**
+ - **Voot**: [*voot*](## "netrc machine")
+ - **VootSeries**: [*voot*](## "netrc machine")
  - **VoxMedia**
  - **VoxMediaVolume**
  - **vpro**: npo.nl, ntr.nl, omroepwnl.nl, zapp.nl and npo3.nl
@@ -1791,6 +1803,7 @@
  - **YandexVideoPreview**
  - **YapFiles**
  - **Yappy**
+ - **YappyProfile**
  - **YesJapan**
  - **yinyuetai:video**: 音悦Tai
  - **YleAreena**
@@ -1816,13 +1829,14 @@
  - **youtube:​search:date**: YouTube search, newest videos first; "ytsearchdate:" prefix
  - **youtube:search_url**: YouTube search URLs with sorting and filter support
  - **youtube:​shorts:pivot:audio**: YouTube Shorts audio pivot (Shorts using audio of a given video)
- - **youtube:stories**: YouTube channel stories; "ytstories:" prefix
  - **youtube:subscriptions**: YouTube subscriptions feed; ":ytsubs" keyword (requires cookies)
  - **youtube:tab**: YouTube Tabs
  - **youtube:user**: YouTube user videos; "ytuser:" prefix
  - **youtube:watchlater**: Youtube watch later list; ":ytwatchlater" keyword (requires cookies)
  - **YoutubeLivestreamEmbed**: YouTube livestream embeds
  - **YoutubeYtBe**: youtu.be
+ - **Zaiko**
+ - **ZaikoETicket**
  - **YtAlternate**
  - **Zapiks**
  - **Zattoo**: [*zattoo*](## "netrc machine")

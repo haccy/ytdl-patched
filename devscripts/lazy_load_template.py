@@ -6,6 +6,7 @@ from ..utils import (
     age_restricted,
     bug_reports_message,
     classproperty,
+    variadic,
     get_first_group,
     write_string,
 )
