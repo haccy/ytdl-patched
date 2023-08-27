@@ -169,7 +169,7 @@ class FileDownloader(ShowsProgress):
 
     @wrap_file_access('remove')
     def try_remove(self, filename):
-        if os.path.isfile(filename):
+        if self.ydl.isfile(filename):
             self.ydl.remove(filename)
 
     @wrap_file_access('rename')
