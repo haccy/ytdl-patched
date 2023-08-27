@@ -3643,7 +3643,7 @@ def match_filter_func(filters, breaking_filters=None, all_match=False):
     return _match_func
 
 
-class download_range_func:
+class DownloadRange:
     def __init__(self, chapters, ranges, from_info=False):
         self.chapters, self.ranges, self.from_info = chapters, ranges, from_info
 
