@@ -9,8 +9,6 @@ from ..dependencies import WebSocket
 from ..utils import (
     DownloadError,
     str_or_none,
-    sanitized_Request,
-    WebSocketsWrapper,
     try_get,
 )
 
