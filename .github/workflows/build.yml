@@ -340,45 +340,6 @@ jobs:
           git push
 
 
-  upload-internetarchive:
-    needs: [prepare, build-linux, build-windows, build-wheel]
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/ytdlp' }}
-    steps:
-      # https://github.com/actions/runner-images/issues/6283
-      - name: Add Homebrew to PATH
-        run: echo "/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
-      - name: Install ia command and configure
-        run: |
-          sudo apt update
-          sudo apt install -y squashfs-tools
-          brew install rclone
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v2
-        with:
-          name: ytdl-artifacts
-
-      - name: Rename files
-        run: |
-          mv dist/ytdl_patched-${{ needs.prepare.outputs.latest_version_normalized }}-py2.py3-none-any.whl artifacts/ytdl_patched-py2.py3-none-any.whl
-          mv dist/ytdl-patched-${{ needs.prepare.outputs.latest_version_normalized }}.tar.gz               artifacts/ytdl_patched-wheel.tar.gz
-
-      - name: Compress exe files
-        run: |
-          mkdir exe_files/
-          mv ./artifacts/ytdl-patched-red.exe ./artifacts/ytdl-patched-white.exe exe_files/
-          mksquashfs exe_files/ artifacts/win_exe.sqfs \
-            -comp xz -progress -b 1M -Xdict-size 50% \
-            -no-xattrs -force-uid 1000 -force-gid 1000
-
-      - name: Upload files
-        run: |
-          rm -f artifacts/.keep
-          rclone copy --progress --retries=9999 \
-            --internetarchive-access-key-id="${{ secrets.IA_ACCESS }}" \
-            --internetarchive-secret-access-key="${{ secrets.IA_SECRET }}" \
-            artifacts/ :internetarchive:ytdl-patched-binaries/"${{ needs.prepare.outputs.latest_version }}/"
 
   binary-test:
     needs: [build-linux, build-windows]
