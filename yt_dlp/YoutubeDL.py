@@ -2242,7 +2242,6 @@ class YoutubeDL:
                                   'video': self.params.get('allow_multiple_video_streams', False)}
 
         verbose = self.params.get('verbose')
-        check_formats = self.params.get('check_formats') == 'selected'
 
         def _parse_filter(tokens):
             filter_parts = []
@@ -3498,8 +3497,6 @@ class YoutubeDL:
                         return
 
                 if info_dict.get('requested_formats') is not None:
-
-                    requested_formats = info_dict['requested_formats']
                     old_ext = info_dict['ext']
 
                     # merge to mkv if --merge-output-format is unset
@@ -4142,8 +4139,8 @@ class YoutubeDL:
                     format_field(f, 'format_note'),
                     format_field(f, 'container', ignore=(None, f.get('ext'))),
                     delim=', '), delim=' '),
-                 *debug_info(f),
-           ] for f in formats if f.get('preference') is None or f['preference'] >= -1000]
+                *debug_info(f),
+            ] for f in formats if f.get('preference') is None or f['preference'] >= -1000]
         header_line = self._list_format_headers(
             'ID', 'EXT', 'RESOLUTION', '\tFPS', 'HDR', 'CH', delim, '\tFILESIZE', '\tTBR', 'PROTO',
             delim, 'VCODEC', '\tVBR', 'ACODEC', '\tABR', '\tASR', 'MORE INFO', *debug_info_title)
@@ -4193,6 +4190,13 @@ class YoutubeDL:
 
     def list_subtitles(self, video_id, subtitles, name='subtitles'):
         self.__list_table(video_id, name, self.render_subtitles_table, video_id, subtitles)
+
+    @__fd()
+    def urlopen(self, req):
+        """ Start an HTTP download """
+        if isinstance(req, str):
+            req = sanitized_Request(req)
+        return self._opener.open(req, timeout=self._socket_timeout)
 
     def print_debug_header(self):
         if not self.params.get('verbose'):

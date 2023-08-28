@@ -204,9 +204,7 @@ class AbemaTVBaseIE(InfoExtractor):
             })
         AbemaTVBaseIE._USERTOKEN = user_data['token']
 
-        AbemaTVBaseIE._LICENSE_HANDLER = AbemaLicenseHandler(self)
         add_opener(self._downloader, AbemaLicenseHandler(self))
-
         return self._USERTOKEN
 
     def _get_media_token(self, invalidate=False, to_show=True):

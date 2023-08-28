@@ -149,9 +149,9 @@ class HttpFD(FileDownloader):
                     ctx.open_mode = 'wb'
                 ctx.data_len = ctx.content_len = int_or_none(ctx.data.headers.get('Content-length', None))
             except HTTPError as err:
-                if err.code in bad_status_code:
+                if err.status in bad_status_code:
                     raise UnrecoverableHttpError()
-                if err.code == 416:
+                if err.status == 416:
                     # Unable to resume (requested range not satisfiable)
                     try:
                         # Open the connection again without the range header

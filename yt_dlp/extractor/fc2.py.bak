@@ -2,7 +2,7 @@ import re
 
 from .common import InfoExtractor
 from ..compat import compat_parse_qs
-from ..dependencies import websockets
+from ..dependencies import websockets, WebSocket
 from ..networking import Request
 from ..utils import (
     ExtractorError,
@@ -200,7 +200,7 @@ class FC2LiveIE(InfoExtractor):
         playlist_data = None
 
         self.to_screen('%s: Fetching HLS playlist info via WebSocket' % video_id)
-        ws = WebSocketsWrapper(ws_url, {
+        ws = WebSocket(ws_url, {
             'Cookie': self._get_cookie_header('https://live.fc2.com/'),
             'Origin': 'https://live.fc2.com',
             'Accept': '*/*',

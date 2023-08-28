@@ -1022,17 +1022,15 @@ class InfoExtractor:
             return webpage_bytes.decode('utf-8', 'replace')
 
     def _webpage_read_content(self, urlh, url_or_request, video_id, note=None, errnote=None, fatal=True, prefix=None, encoding=None):
-        with urlh:
-            webpage_bytes = urlh.read()
-            final_url = urlh.geturl()
+        webpage_bytes = urlh.read()
         if prefix is not None:
             webpage_bytes = prefix + webpage_bytes
         if self.get_param('dump_intermediate_pages', False):
-            self.to_screen('Dumping request to ' + final_url)
+            self.to_screen('Dumping request to ' + urlh.url)
             dump = base64.b64encode(webpage_bytes).decode('ascii')
             self._downloader.to_screen(dump)
         if self.get_param('write_pages'):
-            filename = self._request_dump_filename(final_url, video_id)
+            filename = self._request_dump_filename(urlh.url, video_id)
             self.to_screen(f'Saving request to {filename}')
             with open(filename, 'wb') as outf:
                 outf.write(webpage_bytes)
@@ -2044,8 +2042,12 @@ class InfoExtractor:
             preference=None, quality=None, m3u8_id=None, live=False, note=None,
             errnote=None, fatal=True, data=None, headers={}, query={},
             video_id=None):
-        formats, subtitles = [], {}
 
+        if not m3u8_url:
+            b64data = base64.b64encode(m3u8_doc.encode('utf-8')).decode()
+            m3u8_url = f'data:application/mpegurl;base64,{b64data}'
+
+        formats, subtitles = [], {}
         has_drm = HlsFD._has_drm(m3u8_doc)
 
         def format_url(url):

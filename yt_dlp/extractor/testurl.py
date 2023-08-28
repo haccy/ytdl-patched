@@ -47,7 +47,7 @@ class TestURLIE(InfoExtractor):
                 f'Test case {num or 0} not found, got only {len(testcases)} tests', expected=True)
 
         self.to_screen(f'Test URL: {tc["url"]}')
-        return self.url_result(tc['url'])
+        return self.url_result(tc['url'], extractor)
 
 
 class TestInfoDictIE(InfoExtractor):

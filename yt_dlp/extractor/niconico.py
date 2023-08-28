@@ -8,7 +8,6 @@ import time
 from urllib.parse import urlparse
 
 from .common import InfoExtractor, SearchInfoExtractor
-from ..compat import compat_HTTPError
 from ..dependencies import WebSocket
 from ..neonippori import (
     load_comments,
@@ -990,7 +989,7 @@ class NiconicoLiveIE(NiconicoBaseIE):
         })
 
         hostname = remove_start(urlparse(urlh.url).hostname, 'sp.')
-        cookies = try_get(urlh.url, self._get_cookie_header)
+        cookies = try_get(urlh.url, self._downloader._calc_cookies)
         latency = try_get(self._configuration_arg('latency'), lambda x: x[0])
         if latency not in self._KNOWN_LATENCY:
             latency = 'high'
