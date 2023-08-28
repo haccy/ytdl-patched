@@ -58,6 +58,7 @@ except (ImportError, SyntaxError):
 
 
 from ..websocket import WebSocket
+from ..websocket import WebSocketsWrapper
 
 
 try:

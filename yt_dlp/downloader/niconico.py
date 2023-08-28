@@ -6,7 +6,7 @@ from . import get_suitable_downloader
 from .common import FileDownloader
 from .external import FFmpegFD
 from ..networking import Request
-from ..utils import DownloadError, WebSocketsWrapper, str_or_none, try_get
+from ..utils import DownloadError, str_or_none, try_get
 from ..dependencies import WebSocket
 
 
