@@ -12,6 +12,7 @@ from ..utils import (
     int_or_none,
     jwt_decode_hs256,
     mimetype2ext,
+    parse_qs,
     qualities,
     traverse_obj,
     try_call,
@@ -203,6 +204,26 @@ class IwaraIE(IwaraBaseIE):
         }
 
 
+class IwaraPlaylistBaseIE(IwaraBaseIE):
+    _PER_PAGE = 32
+
+    def _request_page(self, page, *args):
+        raise ExtractorError('Implement this method in subclasses')
+
+    def _entries(self, *args):
+        *args, first_page, page = args
+        videos = self._request_page(page, *args) if page or not first_page else first_page
+        for x in traverse_obj(videos, ('results', ..., 'id')):
+            yield self.url_result(f'https://iwara.tv/video/{x}')
+
+    def _paged_list(self, playlist_id, playlist_title, first_page, *eargs):
+        return self.playlist_result(
+            OnDemandPagedList(
+                functools.partial(self._entries, *eargs, first_page),
+                self._PER_PAGE),
+            playlist_id, playlist_title)
+
+
 class IwaraUserIE(IwaraBaseIE):
     _VALID_URL = r'https?://(?:www\.)?iwara\.tv/profile/(?P<id>[^/?#&]+)'
     IE_NAME = 'iwara:user'
@@ -296,3 +317,33 @@ class IwaraPlaylistIE(IwaraBaseIE):
                 functools.partial(self._entries, playlist_id, page_0),
                 self._PER_PAGE),
             playlist_id, traverse_obj(page_0, ('title', 'name')))
+
+
+class IwaraSearchIE(IwaraPlaylistBaseIE):
+    _VALID_URL = r'https?://(?:www\.)?iwara\.tv/search\?query=(?P<id>[^&#]+)'
+    IE_NAME = 'iwara:search'
+
+    _TESTS = [{
+        'url': 'https://www.iwara.tv/search?query=version',
+        'info_dict': {
+            'id': 'version',
+        },
+        'playlist_mincount': 11000,
+    }]
+
+    def _request_page(self, page, playlist_id):
+        return self._download_json(
+            'https://api.iwara.tv/search', playlist_id,
+            note=f'Downloading page {page}',
+            query={
+                'type': 'video',
+                'query': playlist_id,
+                'page': page,
+                'limit': self._PER_PAGE,
+            })
+
+    def _real_extract(self, url):
+        playlist_id = traverse_obj(parse_qs(url), ('query', 0)) or urllib.parse.unquote(self._match_id(url))
+        return self._paged_list(
+            playlist_id, playlist_id,
+            None, playlist_id)
