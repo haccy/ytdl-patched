@@ -9,10 +9,13 @@ import datetime
 import email.header
 import email.utils
 import errno
+import gzip
 import hashlib
 import hmac
 import html.entities
 import html.parser
+import http.client
+import http.cookiejar
 import inspect
 import io
 import itertools
@@ -36,6 +39,7 @@ import tempfile
 import time
 import traceback
 import types
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -58,7 +62,7 @@ from ..compat import (
     compat_os_name,
     compat_shlex_quote,
 )
-from ..dependencies import brotli, certifi, websockets, xattr
+from ..dependencies import brotli, certifi, xattr
 from ..socks import ProxyType, sockssocket
 from ..chrome_versions import versions as _CHROME_VERSIONS
 
@@ -666,6 +670,9 @@ def sanitize_filename(s, restricted=False, is_id=NO_DEFAULT, windows=True):
             return ACCENT_CHARS[char]
         elif not restricted and char == '\n':
             return '\0 '
+        elif is_id is NO_DEFAULT and not restricted and char in '"*:<>?|/\\':
+            # Replace with their full-width unicode counterparts
+            return {'/': '\u29F8', '\\': '\u29f9'}.get(char, chr(ord(char) + 0xfee0))
         elif ord(char) < 32 or ord(char) == 127:
             return ''
         elif char == '?' and windows:
@@ -682,6 +689,9 @@ def sanitize_filename(s, restricted=False, is_id=NO_DEFAULT, windows=True):
             return '\0_'
         return char
 
+    # Replace look-alike Unicode glyphs
+    if restricted and (is_id is NO_DEFAULT or not is_id):
+        s = unicodedata.normalize('NFKC', s)
     if windows:
         s = re.sub(r'[0-9]+(?::[0-9]+)+', lambda m: m.group(0).replace(':', '_'), s)  # Handle timestamps
     result = ''.join(map(replace_insane, s))
@@ -1192,6 +1202,9 @@ class ThrottledDownload(ReExtractInfo):
     """ Download speed below --throttled-rate. """
     msg = 'The download speed is below throttle limit'
     expected = False
+
+    def __init__(self):
+        super().__init__(self.msg, expected=False)
 
 
 class UnrecoverableHttpError(ReExtractInfo):
@@ -2326,6 +2339,16 @@ def urljoin(base, path):
     return urllib.parse.urljoin(base, path)
 
 
+class HEADRequest(urllib.request.Request):
+    def get_method(self):
+        return 'HEAD'
+
+
+class PUTRequest(urllib.request.Request):
+    def get_method(self):
+        return 'PUT'
+
+
 def int_or_none(v, scale=1, default=None, get_attr=None, invscale=1):
     if get_attr and v is not None:
         v = getattr(v, get_attr, None)
@@ -2867,6 +2890,23 @@ def lowercase_escape(s):
         s)
 
 
+def escape_rfc3986(s):
+    """Escape non-ASCII characters as suggested by RFC 3986"""
+    return urllib.parse.quote(s, b"%/;:@&=+$,!~*'()?#[]")
+
+
+def escape_url(url):
+    """Escape URL as suggested by RFC 3986"""
+    url_parsed = urllib.parse.urlparse(url)
+    return url_parsed._replace(
+        netloc=url_parsed.netloc.encode('idna').decode('ascii'),
+        path=escape_rfc3986(url_parsed.path),
+        params=escape_rfc3986(url_parsed.params),
+        query=escape_rfc3986(url_parsed.query),
+        fragment=escape_rfc3986(url_parsed.fragment)
+    ).geturl()
+
+
 def parse_qs(url, **kwargs):
     return urllib.parse.parse_qs(urllib.parse.urlparse(url).query, **kwargs)
 
@@ -2916,6 +2956,26 @@ def update_url(url, *, query_update=None, **kwargs):
 
 def update_url_query(url, query):
     return update_url(url, query_update=query)
+
+
+def update_Request(req, url=None, data=None, headers=None, query=None):
+    req_headers = req.headers.copy()
+    req_headers.update(headers or {})
+    req_data = data or req.data
+    req_url = update_url_query(url or req.get_full_url(), query)
+    req_get_method = req.get_method()
+    if req_get_method == 'HEAD':
+        req_type = HEADRequest
+    elif req_get_method == 'PUT':
+        req_type = PUTRequest
+    else:
+        req_type = urllib.request.Request
+    new_req = req_type(
+        req_url, data=req_data, headers=req_headers,
+        origin_req_host=req.origin_req_host, unverifiable=req.unverifiable)
+    if hasattr(req, 'timeout'):
+        new_req.timeout = req.timeout
+    return new_req
 
 
 def _multipart_encode_impl(data, boundary):

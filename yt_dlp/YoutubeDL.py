@@ -4191,13 +4191,6 @@ class YoutubeDL:
     def list_subtitles(self, video_id, subtitles, name='subtitles'):
         self.__list_table(video_id, name, self.render_subtitles_table, video_id, subtitles)
 
-    @__fd()
-    def urlopen(self, req):
-        """ Start an HTTP download """
-        if isinstance(req, str):
-            req = sanitized_Request(req)
-        return self._opener.open(req, timeout=self._socket_timeout)
-
     def print_debug_header(self):
         if not self.params.get('verbose'):
             return

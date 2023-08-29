@@ -1,5 +1,4 @@
 import functools
-import urllib.error
 import urllib.parse
 import urllib.error
 import hashlib
@@ -13,7 +12,6 @@ from ..utils import (
     int_or_none,
     jwt_decode_hs256,
     mimetype2ext,
-    parse_qs,
     qualities,
     traverse_obj,
     try_call,
@@ -204,38 +202,11 @@ class IwaraIE(IwaraBaseIE):
             'formats': list(self._extract_formats(video_id, video_data.get('fileUrl'))),
         }
 
-    def _perform_login(self, username, password):
-        if self.cache.load(self._NETRC_MACHINE, username) and self._get_media_token():
-            self.write_debug('Skipping logging in')
-            return
 
-        IwaraBaseIE._USERTOKEN = self._get_user_token(True)
-        self._get_media_token(True)
-        self.cache.store(self._NETRC_MACHINE, username, IwaraBaseIE._USERTOKEN)
-
-class IwaraPlaylistBaseIE(IwaraBaseIE):
-    _PER_PAGE = 32
-
-    def _request_page(self, page, *args):
-        raise ExtractorError('Implement this method in subclasses')
-
-    def _entries(self, *args):
-        *args, first_page, page = args
-        videos = self._request_page(page, *args) if page or not first_page else first_page
-        for x in traverse_obj(videos, ('results', ..., 'id')):
-            yield self.url_result(f'https://iwara.tv/video/{x}')
-
-    def _paged_list(self, playlist_id, playlist_title, first_page, *eargs):
-        return self.playlist_result(
-            OnDemandPagedList(
-                functools.partial(self._entries, *eargs, first_page),
-                self._PER_PAGE),
-            playlist_id, playlist_title)
-
-
-class IwaraUserIE(IwaraPlaylistBaseIE):
+class IwaraUserIE(IwaraBaseIE):
     _VALID_URL = r'https?://(?:www\.)?iwara\.tv/profile/(?P<id>[^/?#&]+)'
     IE_NAME = 'iwara:user'
+    _PER_PAGE = 32
 
     _TESTS = [{
         'url': 'https://iwara.tv/profile/user792540/videos',
@@ -266,8 +237,8 @@ class IwaraUserIE(IwaraPlaylistBaseIE):
         'playlist_mincount': 1,
     }]
 
-    def _request_page(self, page, playlist_id, user_id):
-        return self._download_json(
+    def _entries(self, playlist_id, user_id, page):
+        videos = self._download_json(
             'https://api.iwara.tv/videos', playlist_id,
             note=f'Downloading page {page}',
             query={
@@ -286,12 +257,17 @@ class IwaraUserIE(IwaraPlaylistBaseIE):
             note='Requesting user info')
         user_id = traverse_obj(user_info, ('user', 'id'))
 
-        return self._paged_list(playlist_id, traverse_obj(user_info, ('user', 'name')), None, playlist_id, user_id)
+        return self.playlist_result(
+            OnDemandPagedList(
+                functools.partial(self._entries, playlist_id, user_id),
+                self._PER_PAGE),
+            playlist_id, traverse_obj(user_info, ('user', 'name')))
 
 
 class IwaraPlaylistIE(IwaraBaseIE):
     _VALID_URL = r'https?://(?:www\.)?iwara\.tv/playlist/(?P<id>[0-9a-f-]+)'
     IE_NAME = 'iwara:playlist'
+    _PER_PAGE = 32
 
     _TESTS = [{
         'url': 'https://iwara.tv/playlist/458e5486-36a4-4ac0-b233-7e9eef01025f',
@@ -301,44 +277,22 @@ class IwaraPlaylistIE(IwaraBaseIE):
         'playlist_mincount': 3,
     }]
 
-    def _request_page(self, page, playlist_id):
-        return self._download_json(
-            f'https://api.iwara.tv/playlist/{playlist_id}', playlist_id, f'Downloading page {page}' if page else 'Requesting playlist info',
-            query={'page': page, 'limit': self._PER_PAGE})
+    def _entries(self, playlist_id, first_page, page):
+        videos = self._download_json(
+            'https://api.iwara.tv/videos', playlist_id, f'Downloading page {page}',
+            query={'page': page, 'limit': self._PER_PAGE},
+            headers=self._get_media_token()) if page else first_page
+        for x in traverse_obj(videos, ('results', ..., 'id')):
+            yield self.url_result(f'https://iwara.tv/video/{x}')
 
     def _real_extract(self, url):
         playlist_id = self._match_id(url)
-        page_0 = self._request_page(0, playlist_id)
-        return self._paged_list(
-            playlist_id, traverse_obj(page_0, ('title', 'name')),
-            page_0, playlist_id)
+        page_0 = self._download_json(
+            f'https://api.iwara.tv/playlist/{playlist_id}?page=0&limit={self._PER_PAGE}', playlist_id,
+            note='Requesting playlist info', headers=self._get_media_token())
 
-
-class IwaraSearchIE(IwaraPlaylistBaseIE):
-    _VALID_URL = r'https?://(?:www\.)?iwara\.tv/search\?query=(?P<id>[^&#]+)'
-    IE_NAME = 'iwara:search'
-
-    _TESTS = [{
-        'url': 'https://www.iwara.tv/search?query=version',
-        'info_dict': {
-            'id': 'version',
-        },
-        'playlist_mincount': 11000,
-    }]
-
-    def _request_page(self, page, playlist_id):
-        return self._download_json(
-            'https://api.iwara.tv/search', playlist_id,
-            note=f'Downloading page {page}',
-            query={
-                'type': 'video',
-                'query': playlist_id,
-                'page': page,
-                'limit': self._PER_PAGE,
-            })
-
-    def _real_extract(self, url):
-        playlist_id = traverse_obj(parse_qs(url), ('query', 0)) or urllib.parse.unquote(self._match_id(url))
-        return self._paged_list(
-            playlist_id, playlist_id,
-            None, playlist_id)
+        return self.playlist_result(
+            OnDemandPagedList(
+                functools.partial(self._entries, playlist_id, page_0),
+                self._PER_PAGE),
+            playlist_id, traverse_obj(page_0, ('title', 'name')))
