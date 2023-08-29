@@ -10,9 +10,7 @@ if typing.TYPE_CHECKING:
     from .common import FileDownloader
 
 from ..postprocessor.metadataparser import MetadataParserPP
-from ..utils import (
-    sanitized_Request,
-)
+from ..networking import Request
 
 
 class Augment():
@@ -85,7 +83,7 @@ class HeartbeatAugment(Augment):
             heartbeat_data = params.get('data')
             if isinstance(heartbeat_data, str):
                 heartbeat_data = heartbeat_data.encode()
-            request = sanitized_Request(heartbeat_url, heartbeat_data)
+            request = Request(url=heartbeat_url, data=heartbeat_data)
 
             def callback(a):
                 self.ydl.urlopen(request).read()
@@ -283,4 +281,5 @@ class MetadataEditorAugment(Augment, MetadataParserPP):
         super().report_warning(text, *args, **kwargs)
 
 
-AUGMENT_MAP = {v._AUGMENT_KEY: v for v in (HeartbeatAugment, HttpServerAugment, MetadataEditorAugment)}
+AUGMENT_MAP = {v._AUGMENT_KEY: v for v in (
+    HeartbeatAugment, HttpServerAugment, MetadataEditorAugment)}

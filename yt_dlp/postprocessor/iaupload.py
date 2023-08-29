@@ -26,11 +26,11 @@ from ..utils import (
     ThrottledDownload,
     int_or_none,
     network_exceptions,
-    sanitized_Request,
     time_millis,
     traverse_obj,
     variadic,
 )
+from ..networking import Request
 
 
 def _dict_from_options_callback(
@@ -512,7 +512,7 @@ class InternetArchiveUploadPP(ExecPP):
         sleep_interval = self.get_param('sleep_interval_requests') or 0
         for retries in itertools.count():
             try:
-                rsp = self._downloader.urlopen(sanitized_Request(url, data=data))
+                rsp = self._downloader.urlopen(Request(url, data=data))
                 return json.loads(rsp.read().decode(rsp.info().get_param('charset') or 'utf-8'))
             except network_exceptions as e:
                 if isinstance(e, compat_HTTPError) and e.code == 404:
@@ -527,7 +527,7 @@ class InternetArchiveUploadPP(ExecPP):
 
     def do_put_request(self, url, headers, data):
         try:
-            rsp = self._downloader.urlopen(sanitized_Request(url, headers=headers, data=data))
+            rsp = self._downloader.urlopen(Request(url, headers=headers, data=data))
         except network_exceptions as e:
             e.fp._error = e
             rsp = e.fp
