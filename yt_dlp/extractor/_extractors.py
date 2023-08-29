@@ -1724,8 +1724,8 @@ from .megatvcom import (
     MegaTVComIE,
     MegaTVComEmbedIE,
 )
-from .ant1newsgr import (
-    Ant1NewsGrWatchIE,
+from .antenna import (
+    AntennaGrWatchIE,
     Ant1NewsGrArticleIE,
     Ant1NewsGrEmbedIE,
 )
